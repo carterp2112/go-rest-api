@@ -1,9 +1,13 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
-	"fmt"
+	"log"
 	"net/http"
+	"strconv"
+
+	"github.com/gorilla/mux"
 )
 
 type Post struct {
@@ -12,47 +16,103 @@ type Post struct {
 	Content string
 }
 
-func AllPosts(w http.ResponseWriter, r *http.Request) {
-	var posts []Post
 
-	rows, err := db.Query("SELECT id, title, content FROM Post")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+func AllPosts(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var posts []Post
+		rows, err := db.Query("SELECT * FROM Post")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer rows.Close()
+		
+		for rows.Next() {
+			var post Post
+			if err := rows.Scan(&post.ID, &post.Title, &post.Content); err != nil {
+				log.Fatal(err)
+			}
+			posts = append(posts, post)
+		}
+	
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(posts)
 	}
+}
 
-	defer rows.Close()
+func PostByID(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var post Post
+		vars := mux.Vars(r)
+		id := vars["id"]
+		err := db.QueryRow("SELECT * FROM Post WHERE ID = ?", id).Scan(&post.ID, &post.Title, &post.Content)
+		if err != nil {
+			log.Fatal(err)
+		}
+	
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(post)
+	}
+}
 
-	for rows.Next() {
+func AddPost(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		var p Post
-		if err := rows.Scan(&p.ID, &p.Title, &p.Content); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			log.Fatal(err)
+		}
+
+		res, err := db.Exec("INSERT INTO Post (Title, Content) VALUES (?, ?)", p.Title, p.Content)
+		if err != nil {
+			http.Error(w, "Failed to insert post", http.StatusInternalServerError)
+			log.Printf("insert error: %v\n", err)
 			return
 		}
-		posts = append(posts, p)
+
+		id, err := res.LastInsertId()
+		if err != nil {
+			http.Error(w, "Failed to retrieve last insert ID", http.StatusInternalServerError)
+			return
+		}
+
+		p.ID = int(id)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(p)
 	}
+}
 
-	if err := rows.Err(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+func DelPost(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		id := vars["id"]
+
+		_,err := db.Exec("DELETE FROM Post WHERE ID = ?", id)
+		if err != nil {
+			log.Fatal(err)
+		}
+	
+		json.NewEncoder(w).Encode("User deleted.")
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(posts)
 }
 
-func PostByID(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Single post endpoint hit.")
-}
+func EditPost(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var p Post
+		vars := mux.Vars(r)
+		id := vars["id"]
+		json.NewDecoder(r.Body).Decode(&p)
 
-func AddPost(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Add Post endpoint hit.")
-}
+		newID, err := strconv.Atoi(id)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-func DelPost(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Delete Post endpoint hit.")
-}
-
-func EditPost(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Edit Post endpoint hit.")
+		_, err = db.Exec("UPDATE Post SET Title = ?, Content = ? WHERE ID = ?", p.Title, p.Content, newID)
+		if err != nil {
+			log.Fatal(err)
+		}
+	
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(p)
+	}
 }
