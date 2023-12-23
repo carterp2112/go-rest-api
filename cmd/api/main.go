@@ -34,6 +34,11 @@ func main() {
 	myRouter.HandleFunc("/posts", AddPost(db)).Methods("POST")
 	myRouter.HandleFunc("/posts/{id}", DelPost(db)).Methods("DELETE")
 	myRouter.HandleFunc("/posts/{id}", EditPost(db)).Methods("PATCH")
+	myRouter.HandleFunc("/users", AllUsers(db)).Methods("GET")
+	myRouter.HandleFunc("/users/{id}", UserByID(db)).Methods("GET")
+	myRouter.HandleFunc("/users", AddUser(db)).Methods("POST")
+	myRouter.HandleFunc("/users/{id}", DelUser(db)).Methods("DELETE")
+	myRouter.HandleFunc("/users/{id}", EditUser(db)).Methods("PATCH")
 	log.Fatal(http.ListenAndServe(":8081", myRouter))
 
 	fmt.Println("DB Successful connection.")
