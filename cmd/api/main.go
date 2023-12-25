@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/rs/cors"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -39,7 +40,18 @@ func main() {
 	myRouter.HandleFunc("/users", AddUser(db)).Methods("POST")
 	myRouter.HandleFunc("/users/{id}", DelUser(db)).Methods("DELETE")
 	myRouter.HandleFunc("/users/{id}", EditUser(db)).Methods("PATCH")
-	log.Fatal(http.ListenAndServe(":8081", myRouter))
+
+	c := cors.New(cors.Options{
+        AllowedOrigins: []string{"http://example.com"},
+        // AllowedOrigins: []string{"*"},
+        AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+        AllowedHeaders: []string{"Content-Type", "X-Requested-With"},
+        AllowCredentials: true,
+        MaxAge: 86400,
+    })
+
+    handler := c.Handler(myRouter)
+	log.Fatal(http.ListenAndServe(":8081", handler))
 
 	fmt.Println("DB Successful connection.")
 }
